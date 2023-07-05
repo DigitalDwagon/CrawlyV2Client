@@ -11,6 +11,9 @@ target/
 .idea/*
 .idea*
 .idea/
+.idea/discord.xml
+.idea/misc.xml
+.idea/vcs.xml
 
 *.iws
 *.iml
