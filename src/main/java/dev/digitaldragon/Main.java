@@ -26,7 +26,7 @@ public class Main {
         for (int i = 0; i < 5; i++) {
             System.out.println("Getting URLs from Tracker:");
             String url = getUrlFromTracker(1, USERNAME, TRACKER_HOST);
-            assert url != null; assert !url.equals("");
+            assert url != null; assert !url.isEmpty();
             //String url = "https://simeontrust.org/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fsimeontrust.org%2Fworkshop%2Fprovidence-2023%2F";
             System.out.println(url);
             System.out.println("Crawling:");
@@ -35,12 +35,20 @@ public class Main {
                 System.out.println("Crawl failed.");
                 continue;
             }
-            System.out.println(data.toString());
+            System.out.println(data);
             System.out.println("Submitting:");
             sendDoneToTracker(data, TRACKER_HOST);
         }
     }
 
+    /**
+     * Retrieves the URL from a tracker server.
+     *
+     * @param amount the amount of URLs to fetch from the tracker.
+     * @param username the username to use for authentication.
+     * @param trackerHost the hostname of the tracker server.
+     * @return the URL fetched from the tracker, or null if an error occurs.
+     */
     public static String getUrlFromTracker(int amount, String username, String trackerHost) {
         try {
             String url = String.format("%s/jobs/queue?amount=%s&username=%s", trackerHost, amount, username);
@@ -117,6 +125,13 @@ public class Main {
         }
     }
 
+    /**
+     * Builds a JSON object containing data from a web page.
+     *
+     * @param document the HTML document of the web page.
+     * @param grabUrl the URL of the web page.
+     * @return a JSON object containing the data from the web page.
+     */
     public static JSONObject buildJsonData(Document document, String grabUrl) {
         JSONObject data = new JSONObject();
         data.put("time", Instant.now());
@@ -135,6 +150,13 @@ public class Main {
         return data;
     }
 
+    /**
+     * Appends the "Location" header values to the discovered outlinks array.
+     *
+     * @param document           the HTML document of the web page.
+     * @param discoveredOutlinks the array of discovered outlinks.
+     * @return the updated array of discovered outlinks with "Location" header values appended.
+     */
     public static JSONArray appendLocationHeader(Document document, JSONArray discoveredOutlinks) {
         Map<String, String> headers = document.connection().response().headers();
         for (String key : headers.keySet()) {
@@ -145,44 +167,81 @@ public class Main {
         return discoveredOutlinks;
     }
 
+    /**
+     * Extracts and cleans the URLs from the provided Elements.
+     *
+     * @param elements the Elements to extract the URLs from.
+     * @param baseUrl  the base URL to resolve relative URLs.
+     * @return the JSONArray containing the extracted and cleaned URLs.
+     */
     public static JSONArray extractAndCleanURLs(Elements elements, String baseUrl) {
         JSONArray urlArray = new JSONArray();
+        Set<String> urls = getURLs(elements);
+
+        for (String url : urls) {
+            url = cleanUrl(url, baseUrl);
+
+            if (url != null) {
+                urlArray.put(url);
+            }
+        }
+
+        return urlArray;
+    }
+
+    /**
+     * Extracts URLs from the provided Elements.
+     *
+     * @param elements the Elements to extract the URLs from.
+     * @return the set of URLs extracted from the Elements.
+     */
+    private static Set<String> getURLs(Elements elements) {
         Set<String> urls = new HashSet<>();
 
         for (Element element : elements) {
             urls.add(element.attr("href"));
-        }
-        for (Element element : elements) {
             urls.add(element.attr("src"));
         }
 
-        for (String url : urls) {
-            if (url.startsWith("#"))
-                continue;
-            if (url.equals(""))
-                continue;
-
-            if (url.startsWith("//"))
-                url = "https:" + url;
-            if (url.startsWith("/")) {
-                url = url.replaceFirst("/", "");
-                url = baseUrl + url;
-            }
-            if (url.startsWith("./")) {
-                url = url.replaceFirst("\\./", "");
-                url = baseUrl + url;
-            }
-            if (!url.startsWith("http://") && !url.startsWith("https://") && !url.contains("://")) {
-                int lastSlashIndex = baseUrl.lastIndexOf("/");
-                String domainBaseUrl = baseUrl.substring(0, lastSlashIndex + 1);
-                url = domainBaseUrl + url;
-            }
-
-            urlArray.put(url);
-        }
-        return urlArray;
+        return urls;
     }
 
+    /**
+     * Cleans and normalizes a URL based on the base URL.
+     *
+     * @param url     the URL to clean.
+     * @param baseUrl the base URL used to resolve relative URLs.
+     * @return the cleaned and normalized URL, or null if the URL is empty or starts with "#".
+     */
+    private static String cleanUrl(String url, String baseUrl) {
+        if (url.startsWith("#") || url.isEmpty()) {
+            return null;
+        }
+
+        if (url.startsWith("//")) {
+            url = "https:" + url;
+        }
+
+        if (url.startsWith("/") || url.startsWith("./")) {
+            url = url.replaceFirst("(^\\/|\\.\\/)","");
+            url = baseUrl + url;
+        }
+
+        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.contains("://")) {
+            int lastSlashIndex = baseUrl.lastIndexOf("/");
+            String domainBaseUrl = baseUrl.substring(0, lastSlashIndex + 1);
+            url = domainBaseUrl + url;
+        }
+
+        return url;
+    }
+
+    /**
+     * Sends a POST request to the tracker with the provided data.
+     *
+     * @param data        the JSON data to send.
+     * @param trackerHost the hostname and port of the tracker.
+     */
     public static void sendDoneToTracker(JSONObject data, String trackerHost) {
         try {
             String url = String.format("%s/jobs/submit", trackerHost);
