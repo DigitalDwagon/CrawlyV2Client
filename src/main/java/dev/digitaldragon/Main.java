@@ -1,6 +1,7 @@
 package dev.digitaldragon;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.UnsupportedMimeTypeException;
@@ -23,22 +24,46 @@ public class Main {
     public static final String TRACKER_HOST = "http://localhost:4567";
 
     public static void main(String[] args) {
+
         for (int i = 0; i < 5; i++) {
-            System.out.println("Getting URLs from Tracker:");
-            String url = getUrlFromTracker(1, USERNAME, TRACKER_HOST);
-            assert url != null; assert !url.isEmpty();
-            //String url = "https://simeontrust.org/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fsimeontrust.org%2Fworkshop%2Fprovidence-2023%2F";
+            String url = fetchURL();
+
+            //If URL is null or empty go to next iteration.
+            if (url == null || url.isEmpty()) {
+                System.out.println("No Url Found");
+                continue;
+            }
+
             System.out.println(url);
-            System.out.println("Crawling:");
-            JSONObject data = grabPage(url);
+
+            JSONObject data = crawlPage(url);
+
+            //If Crawl Failed go to next iteration.
             if (data == null) {
                 System.out.println("Crawl failed.");
                 continue;
             }
+
+            //Print crawled data
+            System.out.println("Crawled Data:");
             System.out.println(data);
-            System.out.println("Submitting:");
+
+            //Submit crawled data.
+            System.out.println("Submitting crawled data:");
             sendDoneToTracker(data, TRACKER_HOST);
         }
+    }
+
+    public static String fetchURL() {
+        System.out.println("Getting URLs from Tracker:");
+        String url = getUrlFromTracker(1, USERNAME, TRACKER_HOST);
+
+        return url;
+    }
+
+    public static JSONObject crawlPage(String url) {
+        System.out.println("Crawling:");
+        return grabPage(url);
     }
 
     /**
@@ -236,6 +261,7 @@ public class Main {
         return url;
     }
 
+
     /**
      * Sends a POST request to the tracker with the provided data.
      *
@@ -254,8 +280,23 @@ public class Main {
             connection.getOutputStream().write(requestBody.getBytes());
             String responseJson = readResponse(connection);
             System.out.println("Tracker response: " + responseJson);
+            // Parse the JSON response
+            JSONObject jsonResp = new JSONObject(responseJson);
+            boolean success = jsonResp.getBoolean("success");
+
+            if (!success) {
+                JSONArray error = jsonResp.getJSONArray("error");
+                System.out.println("Error: " + error.toString());
+                for (int i = 0; i < error.length(); i++) {
+                    if (error.getString(i).equals("BAD_DATA") || error.getString(i).equals("INVALID_TIME")) {
+                        System.out.println("Encountered " + error.getString(i) + " error");
+                    }
+                }
+            }
         } catch (IOException e) {
             System.out.println("Error submitting to tracker");
+        } catch (JSONException e) {
+            System.out.println("Error parsing JSON response");
         }
     }
 }
